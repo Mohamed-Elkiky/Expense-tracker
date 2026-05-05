@@ -1,31 +1,75 @@
 # app.py
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
+from tkcalendar import DateEntry
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import services
 from db import init_db
-
-COLORS = {
-    "bg":           "#f5f5f2",
-    "surface":      "#ffffff",
-    "border":       "#e0ddd4",
-    "accent":       "#5349b7",
-    "accent_light": "#eeedfe",
-    "danger":       "#e24b4a",
-    "text":         "#2c2c2a",
-    "muted":        "#888780",
-}
+from theme import COLORS, FONTS, SPACING
 
 
 class ExpenseApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Expense Tracker")
-        self.geometry("820x600")
-        self.minsize(700, 500)
+        self.geometry("900x700")
+        self.minsize(750, 600)
         self.configure(bg=COLORS["bg"])
+        self._style_ttk()
         self._build_ui()
         self._refresh()
+
+    # ------------------------------------------------------------------ ttk global style
+
+    def _style_ttk(self):
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        style.configure("TCombobox",
+            fieldbackground=COLORS["surface_alt"],
+            background=COLORS["surface_alt"],
+            foreground=COLORS["text"],
+            arrowcolor=COLORS["accent"],
+            bordercolor=COLORS["border"],
+            lightcolor=COLORS["border"],
+            darkcolor=COLORS["border"],
+            insertcolor=COLORS["accent"],
+            selectbackground=COLORS["accent"],
+            selectforeground=COLORS["bg"],
+        )
+        style.map("TCombobox",
+            fieldbackground=[("readonly", COLORS["surface_alt"])],
+            foreground=[("readonly", COLORS["text"])],
+        )
+
+        style.configure("Treeview",
+            font=FONTS["mono"],
+            rowheight=32,
+            background=COLORS["surface"],
+            fieldbackground=COLORS["surface"],
+            foreground=COLORS["text"],
+            borderwidth=0,
+        )
+        style.configure("Treeview.Heading",
+            font=FONTS["subhead"],
+            background=COLORS["surface_alt"],
+            foreground=COLORS["accent"],
+            relief="flat",
+            borderwidth=0,
+        )
+        style.map("Treeview",
+            background=[("selected", COLORS["accent_light"])],
+            foreground=[("selected", COLORS["accent"])],
+        )
+
+        style.configure("Vertical.TScrollbar",
+            background=COLORS["surface_alt"],
+            troughcolor=COLORS["surface"],
+            arrowcolor=COLORS["muted"],
+            bordercolor=COLORS["surface"],
+        )
 
     # ------------------------------------------------------------------ helpers
 
@@ -37,25 +81,54 @@ class ExpenseApp(tk.Tk):
             highlightthickness=1,
         )
 
-    def _label(self, parent, text, size=13, color=None, bold=False, **kw) -> tk.Label:
+    def _label(self, parent, text, font_key="body", color=None, **kw) -> tk.Label:
         return tk.Label(
             parent,
             text=text,
-            font=("Helvetica", size, "bold" if bold else "normal"),
+            font=FONTS[font_key],
             fg=color or COLORS["text"],
             bg=parent.cget("bg"),
             **kw,
         )
 
+    def _entry(self, parent, textvariable) -> tk.Entry:
+        return tk.Entry(
+            parent,
+            textvariable=textvariable,
+            font=FONTS["body"],
+            relief="flat", bd=0,
+            bg=COLORS["surface_alt"],
+            fg=COLORS["text"],
+            insertbackground=COLORS["accent"],
+            highlightbackground=COLORS["border"],
+            highlightcolor=COLORS["accent"],
+            highlightthickness=1,
+        )
+
     # ------------------------------------------------------------------ build UI
 
     def _build_ui(self):
-        left = tk.Frame(self, bg=COLORS["bg"], width=250)
-        left.pack(side="left", fill="y", padx=(16, 8), pady=16)
+        # Header
+        header = tk.Frame(self, bg=COLORS["surface"], height=50)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        self._label(header, "  Expense Tracker", font_key="heading",
+                    color=COLORS["white"]).pack(side="left", pady=12)
+        self._label(header, "Stripe-style Dark  ", font_key="small",
+                    color=COLORS["muted"]).pack(side="right", pady=12)
+
+        tk.Frame(self, bg=COLORS["accent"], height=2).pack(fill="x")
+
+        # Body
+        body = tk.Frame(self, bg=COLORS["bg"])
+        body.pack(fill="both", expand=True, padx=16, pady=16)
+
+        left = tk.Frame(body, bg=COLORS["bg"], width=260)
+        left.pack(side="left", fill="y", padx=(0, 12))
         left.pack_propagate(False)
 
-        right = tk.Frame(self, bg=COLORS["bg"])
-        right.pack(side="right", fill="both", expand=True, padx=(8, 16), pady=16)
+        right = tk.Frame(body, bg=COLORS["bg"])
+        right.pack(side="right", fill="both", expand=True)
 
         self._build_form(left)
         self._build_summary(left)
@@ -63,126 +136,208 @@ class ExpenseApp(tk.Tk):
 
     def _build_form(self, parent):
         card = self._card(parent)
-        card.pack(fill="x", pady=(0, 10))
+        card.pack(fill="x", pady=(0, 12))
 
-        inner = tk.Frame(card, bg=COLORS["surface"], padx=14, pady=14)
+        inner = tk.Frame(card, bg=COLORS["surface"],
+                         padx=SPACING["pad_x"], pady=SPACING["pad_y"])
         inner.pack(fill="both")
 
-        self._label(inner, "Add expense", size=14, bold=True).pack(anchor="w", pady=(0, 12))
+        self._label(inner, "New expense", font_key="heading",
+                    color=COLORS["white"]).pack(anchor="w", pady=(0, 14))
 
-        self._label(inner, "Amount (£)", size=12, color=COLORS["muted"]).pack(anchor="w")
+        self._label(inner, "Amount (£)", font_key="small",
+                    color=COLORS["muted"]).pack(anchor="w")
         self.amount_var = tk.StringVar()
-        tk.Entry(
-            inner, textvariable=self.amount_var, font=("Helvetica", 13),
-            relief="flat", highlightbackground=COLORS["border"], highlightthickness=1, bd=0
-        ).pack(fill="x", ipady=6, pady=(2, 8))
+        self._entry(inner, self.amount_var).pack(fill="x", ipady=7, pady=(3, 10))
 
-        self._label(inner, "Category", size=12, color=COLORS["muted"]).pack(anchor="w")
+        self._label(inner, "Category", font_key="small",
+                    color=COLORS["muted"]).pack(anchor="w")
         self.cat_var = tk.StringVar(value=services.CATEGORIES[0])
         ttk.Combobox(
             inner, textvariable=self.cat_var,
-            values=services.CATEGORIES, state="readonly", font=("Helvetica", 12)
-        ).pack(fill="x", pady=(2, 8))
+            values=services.CATEGORIES, state="readonly",
+            font=FONTS["body"],
+        ).pack(fill="x", ipady=4, pady=(3, 10))
 
-        self._label(inner, "Description", size=12, color=COLORS["muted"]).pack(anchor="w")
+        self._label(inner, "Description", font_key="small",
+                    color=COLORS["muted"]).pack(anchor="w")
         self.desc_var = tk.StringVar()
-        tk.Entry(
-            inner, textvariable=self.desc_var, font=("Helvetica", 13),
-            relief="flat", highlightbackground=COLORS["border"], highlightthickness=1, bd=0
-        ).pack(fill="x", ipady=6, pady=(2, 8))
+        self._entry(inner, self.desc_var).pack(fill="x", ipady=7, pady=(3, 10))
 
-        self._label(inner, "Date (YYYY-MM-DD)", size=12, color=COLORS["muted"]).pack(anchor="w")
+        self._label(inner, "Date", font_key="small",
+                    color=COLORS["muted"]).pack(anchor="w")
         self.date_var = tk.StringVar(value=datetime.today().strftime("%Y-%m-%d"))
-        tk.Entry(
-            inner, textvariable=self.date_var, font=("Helvetica", 13),
-            relief="flat", highlightbackground=COLORS["border"], highlightthickness=1, bd=0
-        ).pack(fill="x", ipady=6, pady=(2, 12))
+        DateEntry(
+            inner,
+            textvariable=self.date_var,
+            font=FONTS["body"],
+            date_pattern="yyyy-mm-dd",
+            background=COLORS["accent"],
+            foreground=COLORS["bg"],
+            bordercolor=COLORS["border"],
+            headersbackground=COLORS["surface_alt"],
+            headersforeground=COLORS["accent"],
+            selectbackground=COLORS["accent"],
+            selectforeground=COLORS["bg"],
+            normalbackground=COLORS["surface"],
+            normalforeground=COLORS["text"],
+            weekendbackground=COLORS["surface"],
+            weekendforeground=COLORS["accent"],
+            othermonthbackground=COLORS["bg"],
+            othermonthforeground=COLORS["muted"],
+        ).pack(fill="x", ipady=6, pady=(3, 14))
 
         tk.Button(
             inner, text="Add expense", command=self._on_add,
-            font=("Helvetica", 13, "bold"), fg=COLORS["surface"], bg=COLORS["accent"],
-            activebackground="#3c3489", activeforeground=COLORS["surface"],
-            relief="flat", cursor="hand2", padx=8, pady=8,
+            font=FONTS["btn"],
+            fg=COLORS["bg"], bg=COLORS["accent"],
+            activebackground="#00a844", activeforeground=COLORS["bg"],
+            relief="flat", cursor="hand2", pady=10, bd=0,
         ).pack(fill="x")
 
     def _build_summary(self, parent):
         card = self._card(parent)
-        card.pack(fill="x")
+        card.pack(fill="both", expand=True)
 
-        inner = tk.Frame(card, bg=COLORS["surface"], padx=14, pady=14)
-        inner.pack(fill="both")
+        inner = tk.Frame(card, bg=COLORS["surface"],
+                         padx=SPACING["pad_x"], pady=SPACING["pad_y"])
+        inner.pack(fill="both", expand=True)
 
-        self._label(inner, "This month", size=14, bold=True).pack(anchor="w", pady=(0, 8))
+        self._label(inner, "This month", font_key="subhead",
+                    color=COLORS["muted"]).pack(anchor="w", pady=(0, 4))
 
-        self.total_lbl = self._label(inner, "£0.00", size=22, bold=True, color=COLORS["accent"])
-        self.total_lbl.pack(anchor="w", pady=(0, 6))
+        self.total_lbl = self._label(inner, "£0.00", font_key="total",
+                                     color=COLORS["accent"])
+        self.total_lbl.pack(anchor="w", pady=(0, 10))
 
-        self.cat_frame = tk.Frame(inner, bg=COLORS["surface"])
-        self.cat_frame.pack(fill="x")
+        tk.Frame(inner, bg=COLORS["border"], height=1).pack(fill="x", pady=(0, 10))
+
+        # Pie chart canvas
+        self.fig, self.ax = plt.subplots(figsize=(2.4, 2.4))
+        self.fig.patch.set_facecolor(COLORS["surface"])
+        self.ax.set_facecolor(COLORS["surface"])
+
+        self.chart_canvas = FigureCanvasTkAgg(self.fig, master=inner)
+        self.chart_canvas.get_tk_widget().pack(fill="x")
+
+        # Percentage breakdown labels
+        self.pct_frame = tk.Frame(inner, bg=COLORS["surface"])
+        self.pct_frame.pack(fill="x", pady=(8, 0))
 
     def _build_table(self, parent):
-        # filter row
         filter_row = tk.Frame(parent, bg=COLORS["bg"])
-        filter_row.pack(fill="x", pady=(0, 8))
+        filter_row.pack(fill="x", pady=(0, 10))
 
-        self._label(filter_row, "Month (YYYY-MM):", size=12, color=COLORS["muted"]).pack(side="left")
+        self._label(filter_row, "Month:", font_key="small",
+                    color=COLORS["muted"]).pack(side="left")
+
         self.month_var = tk.StringVar(value=datetime.today().strftime("%Y-%m"))
-        tk.Entry(
-            filter_row, textvariable=self.month_var, width=10, font=("Helvetica", 12),
-            relief="flat", highlightbackground=COLORS["border"], highlightthickness=1, bd=0
-        ).pack(side="left", padx=(6, 6), ipady=4)
+        self._entry(filter_row, self.month_var).pack(
+            side="left", padx=(6, 8), ipady=5, ipadx=6)
 
         tk.Button(
             filter_row, text="Filter", command=self._refresh,
-            font=("Helvetica", 11), bg=COLORS["accent_light"], fg=COLORS["accent"],
-            relief="flat", cursor="hand2", padx=8, pady=4
+            font=FONTS["small"], fg=COLORS["accent"], bg=COLORS["accent_light"],
+            activebackground=COLORS["border"], activeforeground=COLORS["accent"],
+            relief="flat", cursor="hand2", padx=12, pady=5, bd=0,
         ).pack(side="left", padx=(0, 6))
 
         tk.Button(
             filter_row, text="All time", command=self._show_all,
-            font=("Helvetica", 11), bg=COLORS["bg"], fg=COLORS["muted"],
-            relief="flat", cursor="hand2", padx=8, pady=4
-        ).pack(side="left")
+            font=FONTS["small"], fg=COLORS["muted"], bg=COLORS["surface"],
+            activebackground=COLORS["surface_alt"], activeforeground=COLORS["text"],
+            relief="flat", cursor="hand2", padx=12, pady=5, bd=0,
+        ).pack(side="left", padx=(0, 6))
 
-        # table
+        tk.Button(
+            filter_row, text="Export Excel", command=self._on_export,
+            font=FONTS["small"], fg=COLORS["bg"], bg=COLORS["accent"],
+            activebackground="#00a844", activeforeground=COLORS["bg"],
+            relief="flat", cursor="hand2", padx=12, pady=5, bd=0,
+        ).pack(side="right")
+
         card = self._card(parent)
         card.pack(fill="both", expand=True)
 
         cols = ("date", "category", "description", "amount")
         self.tree = ttk.Treeview(card, columns=cols, show="headings", selectmode="browse")
 
-        for col, label, width in [
-            ("date",        "Date",        90),
-            ("category",    "Category",   110),
-            ("description", "Description", 220),
-            ("amount",      "Amount (£)",  90),
+        for col, label, width, anchor in [
+            ("date",        "Date",        95,  "w"),
+            ("category",    "Category",    115, "w"),
+            ("description", "Description", 240, "w"),
+            ("amount",      "Amount (£)",  100, "e"),
         ]:
-            self.tree.heading(col, text=label)
-            self.tree.column(col, width=width, minwidth=60)
+            self.tree.heading(col, text=label, anchor=anchor)
+            self.tree.column(col, width=width, minwidth=60, anchor=anchor)
 
         scrollbar = ttk.Scrollbar(card, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        style = ttk.Style(self)
-        style.theme_use("clam")
-        style.configure("Treeview",
-            font=("Helvetica", 12), rowheight=30,
-            background=COLORS["surface"], fieldbackground=COLORS["surface"],
-            foreground=COLORS["text"])
-        style.configure("Treeview.Heading",
-            font=("Helvetica", 12, "bold"),
-            background=COLORS["bg"], foreground=COLORS["muted"], relief="flat")
-        style.map("Treeview",
-            background=[("selected", COLORS["accent_light"])],
-            foreground=[("selected", COLORS["accent"])])
-
         tk.Button(
             parent, text="Delete selected", command=self._on_delete,
-            font=("Helvetica", 12), fg=COLORS["danger"], bg=COLORS["bg"],
-            relief="flat", cursor="hand2", pady=6,
-        ).pack(anchor="e", pady=(6, 0))
+            font=FONTS["small"], fg=COLORS["danger"], bg=COLORS["bg"],
+            activeforeground=COLORS["danger"], activebackground=COLORS["bg"],
+            relief="flat", cursor="hand2", pady=6, bd=0,
+        ).pack(anchor="e", pady=(8, 0))
+
+    # ------------------------------------------------------------------ pie chart
+
+    def _update_chart(self, by_category: dict, total: float):
+        self.ax.clear()
+
+        if not by_category:
+            self.ax.text(
+                0.5, 0.5, "No data", ha="center", va="center",
+                color=COLORS["muted"], fontsize=11,
+                transform=self.ax.transAxes,
+            )
+            self.ax.axis("off")
+            self.chart_canvas.draw()
+            for w in self.pct_frame.winfo_children():
+                w.destroy()
+            return
+
+        PIE_COLORS = [
+            "#00c853", "#1de9b6", "#00b0ff",
+            "#d500f9", "#ff6d00", "#ffea00",
+            "#ff1744",
+        ]
+
+        labels = list(by_category.keys())
+        values = list(by_category.values())
+        colors = PIE_COLORS[:len(labels)]
+
+        wedges, _ = self.ax.pie(
+            values,
+            colors=colors,
+            startangle=90,
+            wedgeprops={"linewidth": 2, "edgecolor": COLORS["surface"]},
+        )
+
+        self.ax.axis("equal")
+        self.fig.tight_layout(pad=0.5)
+        self.chart_canvas.draw()
+
+        # Percentage labels
+        for w in self.pct_frame.winfo_children():
+            w.destroy()
+
+        for i, (cat, val) in enumerate(zip(labels, values)):
+            pct = (val / total * 100) if total else 0
+            row = tk.Frame(self.pct_frame, bg=COLORS["surface"])
+            row.pack(fill="x", pady=1)
+
+            dot = tk.Label(row, text="●", fg=PIE_COLORS[i % len(PIE_COLORS)],
+                           bg=COLORS["surface"], font=FONTS["small"])
+            dot.pack(side="left", padx=(0, 4))
+
+            self._label(row, cat, font_key="small",
+                        color=COLORS["muted"]).pack(side="left")
+            self._label(row, f"{pct:.1f}%", font_key="small",
+                        color=COLORS["text"]).pack(side="right")
 
     # ------------------------------------------------------------------ actions
 
@@ -196,17 +351,14 @@ class ExpenseApp(tk.Tk):
             messagebox.showerror("Invalid amount", "Enter a positive number.")
             return
 
-        date = self.date_var.get().strip()
-        try:
-            datetime.strptime(date, "%Y-%m-%d")
-        except ValueError:
-            messagebox.showerror("Invalid date", "Date must be YYYY-MM-DD.")
-            return
-
-        services.add_expense(amount, self.cat_var.get(), self.desc_var.get().strip(), date)
+        services.add_expense(
+            amount,
+            self.cat_var.get(),
+            self.desc_var.get().strip(),
+            self.date_var.get(),
+        )
         self.amount_var.set("")
         self.desc_var.set("")
-        self.date_var.set(datetime.today().strftime("%Y-%m-%d"))
         self._refresh()
 
     def _on_delete(self):
@@ -217,6 +369,24 @@ class ExpenseApp(tk.Tk):
         if messagebox.askyesno("Delete", "Delete this expense?"):
             services.delete_expense(expense_id)
             self._refresh()
+
+    def _on_export(self):
+        month = self.month_var.get().strip() or None
+        label = month if month else "all_time"
+
+        path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel file", "*.xlsx")],
+            initialfile=f"expenses_{label}.xlsx",
+        )
+        if not path:
+            return
+
+        try:
+            services.export_to_excel(path, month)
+            messagebox.showinfo("Exported", f"Saved to:\n{path}")
+        except Exception as e:
+            messagebox.showerror("Export failed", str(e))
 
     # ------------------------------------------------------------------ refresh
 
@@ -236,22 +406,19 @@ class ExpenseApp(tk.Tk):
         for row in services.get_expenses(month):
             self.tree.insert(
                 "", "end",
-                values=(row["date"], row["category"], row["description"] or "—", f"{row['amount']:.2f}"),
+                values=(
+                    row["date"],
+                    row["category"],
+                    row["description"] or "—",
+                    f"{row['amount']:.2f}",
+                ),
                 tags=(row["id"],),
             )
 
     def _update_summary(self, month):
         summary = services.get_summary(month)
         self.total_lbl.config(text=f"£{summary['total']:.2f}")
-
-        for widget in self.cat_frame.winfo_children():
-            widget.destroy()
-
-        for cat, total in sorted(summary["by_category"].items(), key=lambda x: -x[1]):
-            row = tk.Frame(self.cat_frame, bg=COLORS["surface"])
-            row.pack(fill="x", pady=1)
-            self._label(row, cat, size=11, color=COLORS["muted"]).pack(side="left")
-            self._label(row, f"£{total:.2f}", size=11).pack(side="right")
+        self._update_chart(summary["by_category"], summary["total"])
 
 
 if __name__ == "__main__":
