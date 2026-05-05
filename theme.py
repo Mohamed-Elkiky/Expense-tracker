@@ -1,6 +1,6 @@
 # theme.py
 
-COLORS = {
+DARK = {
     "bg":           "#0f0f23",
     "surface":      "#16163a",
     "surface_alt":  "#1e1e4a",
@@ -11,6 +11,20 @@ COLORS = {
     "success":      "#00c853",
     "text":         "#f0f0f0",
     "muted":        "#6b6b9a",
+    "white":        "#ffffff",
+}
+
+LIGHT = {
+    "bg":           "#f4f5f7",
+    "surface":      "#ffffff",
+    "surface_alt":  "#ebedf0",
+    "border":       "#d0d4db",
+    "accent":       "#0052cc",
+    "accent_light": "#deebff",
+    "danger":       "#de350b",
+    "success":      "#006644",
+    "text":         "#172b4d",
+    "muted":        "#6b778c",
     "white":        "#ffffff",
 }
 
